@@ -81,16 +81,27 @@ test "$HOSTNAME" || {
 	HOSTNAME="$(hostname)"
 }
 
+if test -s /etc/machine-id; then
+	HOSTID=$(< /etc/machine-id)
+elif test -s /var/lib/dbus/machine-id; then
+	HOSTID=$(< /var/lib/dbus/machine-id)
+elif type dbus-uuidgen > /dev/null 2>&1; then
+	HOSTID=$(dbus-uuidgen --get)
+else
+	HOSTID=""
+fi
+
 # Parse command line
 
 unset nofail
 
-while getopts 'DOdhmou:v' OPT; do
+while getopts 'DOdhimou:v' OPT; do
 case $OPT in
 	"D")	echo "$DIST"; exit;;
 	"O")	echo "$OSTYPE"; exit;;
 	"d")	echo "$DISTTYPE"; exit;;
 	"h")	echo "$HOSTTYPE"; exit;;
+	"i")	echo "$HOSTID"; exit;;
 	"m")	echo "$MACHTYPE"; exit;;
 	"o")	RUNOPT=$OPT;;
 	"u")	out=$OPTARG;;
@@ -105,12 +116,14 @@ done
 ARCHOBJ="obj/arch.$MACHTYPE"
 DISTOBJ="obj/dist.$DISTTYPE"
 HOSTOBJ="obj/host.$HOSTNAME"
+HOSTIDOBJ="obj/host.$HOSTID"
 
 if test "$out"; then
 	case $out in
 	a|arch)	OBJDIR="$ARCHOBJ";;
 	d|dist)	OBJDIR="$DISTOBJ";;
 	h|host)	OBJDIR="$HOSTOBJ";;
+	i|hostid) OBJDIR="$HOSTIDOBJ";;
 	*)	log "invalid \$out value '$out'" >&2
 		exit 1;;
 	esac
@@ -126,6 +139,7 @@ else
 		echo "  arch: $MACHTYPE" >&2
 		echo "  dist: $DISTTYPE" >&2
 		echo "  host: $HOSTNAME" >&2
+		echo "  hostid: $HOSTID" >&2
 		exit 1
 	fi
 fi
@@ -139,6 +153,7 @@ case $RUNOPT in
 		echo "hosttype: h=${HOSTTYPE-?}";
 		echo "machtype: m=${MACHTYPE-?}";
 		echo "disttype: d=${DISTTYPE-?}";
+		echo "hostid:   i=${HOSTID-?}";
 		echo "obj:      o=${OBJDIR-?}";
 		exit;;
 esac
