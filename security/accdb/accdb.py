@@ -151,6 +151,10 @@ def compile_filter(pattern):
 		elif tokens[0] in {"OR", "or"}:
 			filters = [compile_filter(x) for x in tokens[1:]]
 			return DisjunctionFilter(*filters)
+		elif tokens[0] in {"NAME", "name"}:
+			if len(tokens) > 2:
+				raise FilterSyntaxError("too many arguments for 'NAME'")
+			return NameFilter(tokens[1])
 		elif tokens[0] in {"NOT", "not"}:
 			if len(tokens) > 2:
 				raise FilterSyntaxError("too many arguments for 'NOT'")
@@ -160,23 +164,31 @@ def compile_filter(pattern):
 			if len(tokens) > 2:
 				raise FilterSyntaxError("too many arguments for 'PATTERN'")
 			return PatternFilter(tokens[1])
+		elif tokens[0] in {"TAG", "tag"}:
+			if len(tokens) > 2:
+				raise FilterSyntaxError("too many arguments for 'TAG'")
+			return TagFilter(tokens[1])
 		else:
 			raise FilterSyntaxError("unknown operator %r in (%s)" \
 				% (tokens[0], pattern))
 	elif " " in tokens[0] or "(" in tokens[0] or ")" in tokens[0]:
 		return compile_filter(tokens[0])
+	elif tokens[0] == "*":
+		return TautologyFilter()
+	elif tokens[0].startswith("+"):
+		return TagFilter(tokens[0][1:])
+	elif tokens[0].startswith("@"):
+		return PatternFilter(tokens[0][1:])
+	elif tokens[0].startswith("~"):
+		return NameFilter(tokens[0][1:])
 	else:
-		return PatternFilter(tokens[0])
+		regex = fnmatch.translate(tokens[0][1:])
+		return NameFilter(regex)
 
 def compile_pattern(pattern):
 	func = None
 
-	if pattern == "*":
-		func = lambda entry: True
-	elif pattern.startswith("+"):
-		regex = re_compile_glob(pattern[1:])
-		func = lambda entry: any(regex.match(tag) for tag in entry.tags)
-	elif pattern.startswith("@"):
+	if pattern.startswith("@"):
 		if "=" in pattern:
 			attr, glob = pattern[1:].split("=", 1)
 			attr = translate_field(attr)
@@ -200,18 +212,41 @@ def compile_pattern(pattern):
 		else:
 			attr = translate_field(pattern[1:])
 			func = lambda entry: attr in entry.attributes
-	elif pattern.startswith("~"):
-		regex = re.compile(pattern[1:], re.I | re.U)
-		func = lambda entry: regex.search(entry.name)
-	else:
-		regex = re_compile_glob(pattern + "*")
-		func = lambda entry: regex.match(entry.name)
 
 	return func
 
 class Filter(object):
 	def __call__(self, entry):
 		return bool(self.test(entry))
+
+class TautologyFilter(Filter):
+	def test(self, entry):
+		return True
+
+	def __repr__(self):
+		return "NOOP"
+
+class TagFilter(Filter):
+	def __init__(self, tag):
+		self.tag = tag
+		self.regex = re_compile_glob(tag)
+
+	def test(self, entry):
+		return any(self.regex.match(tag) for tag in entry.tags)
+
+	def __repr__(self):
+		return "(TAG %s)" % self.tag
+
+class NameFilter(Filter):
+	def __init__(self, regex):
+		self.input = regex
+		self.regex = re.compile(regex, re.I | re.U)
+
+	def test(self, entry):
+		return self.regex.match(entry.name)
+
+	def __repr__(self):
+		return "(NAME %s)" % self.input
 
 class PatternFilter(Filter):
 	def __init__(self, pattern):
