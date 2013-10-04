@@ -41,6 +41,20 @@ field_order = ["object", "username", "password", "email"]
 
 field_prefix_re = re.compile(r"^\W+")
 
+def encrypt(key, data):
+	import Crypto
+	from Crypto.Cipher import AES
+	iv = Crypto.Random.new().read(AES.block_size)
+	cipher = AES.new(key, AES.MODE_CFB, iv)
+	return iv + cipher.encrypt(data)
+
+def decrypt(key, data):
+	from Crypto.Cipher import AES
+	iv = data[:AES.block_size]
+	data = data[AES.block_size:]
+	cipher = AES.new(key, AES.MODE_CFB, iv)
+	return cipher.decrypt(data)
+
 def strip_field_prefix(name):
 	return field_prefix_re.sub("", name)
 
@@ -511,6 +525,15 @@ class Entry(object):
 						file=sys.stderr)
 					val = "<private[data lost]>"
 					self._broken = True
+				elif val.startswith("<crypt> "):
+					db = globals()["db"]
+					nval = val[len("<crypt> "):]
+					nval = b64decode(nval)
+					try:
+						nval = decrypt(db.crypt_key, nval)
+						val = nval.decode("utf-8")
+					except UnicodeDecodeError:
+						pass
 				elif val.startswith("<base64> "):
 					nval = val[len("<base64> "):]
 					nval = b64decode(nval)
