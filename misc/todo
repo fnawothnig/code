@@ -6,8 +6,19 @@ date_fmt="'%y %b %_d"
 
 date_sep=" – "
 
+have() {
+	command -v "$1" >& /dev/null;
+}
+
 _todo_show() {
-	nl -ba -s". " -w3 "$file"
+	if have nl; then
+		nl -ba -w3 -s". " "$file"
+	else
+		local i=0
+		while IFS='' read -r line; do
+			printf '%3d%s%s\n' $((++i)) ". " "$line"
+		done < "$file"
+	fi
 }
 
 todo() {
