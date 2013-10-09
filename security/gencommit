@@ -16,6 +16,8 @@
 #
 #     commitment = public + " " + domain + " " + date + " " + hashfunc
 
+hash_re='^[a-f0-9]+$'
+
 fmtseed() { printf '%s %s %s' "$@"; }
 fmtdate() { date -d "$1" +'%Y-%m-%d'; }
 fmthashfunc() { printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -d -c 'a-z0-9'; }
@@ -40,6 +42,11 @@ readp() {
 		printf '...\n'
 	fi
 }
+
+public_verify=
+if (( $# == 4 )) && [[ "$1" =~ $hash_re ]]; then
+	public_verify=$1; shift
+fi
 
 domain=$1
 date=$2
@@ -93,3 +100,12 @@ echoc "hash input:" "$(fmtseed "$domain" "$date" "...")"
 echoc "secret:" "$(printf '\e[31m%s\e[m' "$secret")"
 
 echoc "commitment:" "$(printf '\e[32m%s\e[m' "$public") $domain $date $hash"
+
+if [[ "$public_verify" ]]; then
+	echoc "compare:" "$(
+		if [[ "$public" == "$public_verify" ]]; then
+			printf '\e[32m%s\e[m' 'match'
+		else
+			printf '\e[31m%s\e[m' 'mismatch'
+		fi)"
+fi
