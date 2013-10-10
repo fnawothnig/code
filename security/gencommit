@@ -18,7 +18,7 @@
 
 fmtseed() { printf '%s %s %s' "$@"; }
 fmtdate() { date -d "$1" +'%Y-%m-%d'; }
-fmthashfunc() { printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -d -c 'a-z0-9'; }
+fmthashfunc() { printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -d -c 'a-z0-9,'; }
 
 stop() { echo "$*" >&2; exit 1; }
 
@@ -44,7 +44,17 @@ readp() {
 domain=$1
 date=$2
 hash=$3
-hash=$(fmthashfunc "${hash:-sha1}")
+hash=$(fmthashfunc "${hash:-sha1,v2}")
+
+case $hash in
+    *,v2)
+	hash=${hash%,*}
+	fmtseed() { printf '%s' "$3 $1 $2"; }
+	;;
+    *)
+	fmtseed() { printf '%s' "$1 $2 $3"; }
+	;;
+esac
 
 case $hash in
     sha1)
