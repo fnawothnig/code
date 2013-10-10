@@ -22,6 +22,8 @@ fmthashfunc() { printf '%s' "$1" | tr 'A-Z' 'a-z' | tr -d -c 'a-z0-9,'; }
 
 stop() { echo "$*" >&2; exit 1; }
 
+githead() { (cd "$1" && git rev-parse --verify "refs/heads/master"); }
+
 colwidth=11
 
 readc() { read -p "$(printf '%*s ' $colwidth "$1")" -r "${@:2}"; }
@@ -46,9 +48,11 @@ date=$2
 hash=$3
 hash=$(fmthashfunc "${hash:-sha1,v2}")
 
+vers=1
+
 case $hash in
     *,v2)
-	hash=${hash%,*}
+	hash=${hash%,*} vers=2
 	fmtseed() { printf '%s' "$3 $1 $2"; }
 	;;
     *)
@@ -76,6 +80,18 @@ if ! [[ "$domain" ]]; then
 	stop "Domain is empty."
 fi
 
+if (( vers >= 2 )); then
+	if [[ $date == *,* ]]; then
+		attrl=${date#*,}
+		date=${date%%,*}
+		while [[ $attrl == *,* ]]; do
+			attrs+=("${attrl%%,*}")
+			attrl=${attrl#*,}
+		done
+		attrs+=("$attrl")
+	fi
+fi
+
 if [[ "$date" ]]; then
 	date=$(fmtdate "$date")
 	echoc "date:" "$date"
@@ -88,18 +104,38 @@ if ! [[ "$date" ]]; then
 	stop "Invalid date."
 fi
 
+if (( vers >= 2 )); then
+	if (( ${#attrs[@]} == 0 )); then
+		if [[ -d ~/public_html/website ]]; then
+			attrs+=("website-git-commit=$(githead ~/public_html/website)")
+		fi
+	fi
+
+	for attr in "${attrs[@]}"; do
+		echoc "attrs:" "$attr"
+	done
+fi
+
 readp "passphrase?" passphrase
 
 if ! [[ "$passphrase" ]]; then
 	stop "Passphrase is empty."
 fi
 
-secret=$(fmtseed "$domain" "$date" "$passphrase" | hash)
+bindings="$date"
+
+if (( vers >= 2 )); then
+	for attr in "${attrs[@]}"; do
+		bindings+=",$attr"
+	done
+fi
+
+secret=$(fmtseed "$domain" "$bindings" "$passphrase" | hash)
 
 public=$(printf '%s' "$secret" | hash)
 
-echoc "hash input:" "$(fmtseed "$domain" "$date" "...")"
+echoc "hash input:" "$(fmtseed "$domain" "$bindings" "...")"
 
 echoc "secret:" "$(printf '\e[31m%s\e[m' "$secret")"
 
-echoc "commitment:" "$(printf '\e[32m%s\e[m' "$public") $domain $date $hash"
+echoc "commitment:" "$(printf '\e[32m%s\e[m' "$public") $domain $bindings $hash"
