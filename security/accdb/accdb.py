@@ -151,6 +151,10 @@ def compile_filter(pattern):
         elif tokens[0] in {"OR", "or"}:
             filters = [compile_filter(x) for x in tokens[1:]]
             return DisjunctionFilter(*filters)
+        elif tokens[0] in {"ATTR", "attr"}:
+            if len(tokens) > 2:
+                raise FilterSyntaxError("too many arguments for 'ATTR'")
+            return AttrFilter(tokens[1])
         elif tokens[0] in {"NAME", "name"}:
             if len(tokens) > 2:
                 raise FilterSyntaxError("too many arguments for 'NAME'")
@@ -160,10 +164,6 @@ def compile_filter(pattern):
                 raise FilterSyntaxError("too many arguments for 'NOT'")
             filter = compile_filter(tokens[1])
             return NegationFilter(filter)
-        elif tokens[0] in {"PATTERN", "pattern"}:
-            if len(tokens) > 2:
-                raise FilterSyntaxError("too many arguments for 'PATTERN'")
-            return PatternFilter(tokens[1])
         elif tokens[0] in {"TAG", "tag"}:
             if len(tokens) > 2:
                 raise FilterSyntaxError("too many arguments for 'TAG'")
@@ -178,42 +178,12 @@ def compile_filter(pattern):
     elif tokens[0].startswith("+"):
         return TagFilter(tokens[0][1:])
     elif tokens[0].startswith("@"):
-        return PatternFilter(tokens[0][1:])
+        return AttrFilter(tokens[0][1:])
     elif tokens[0].startswith("~"):
         return NameFilter(tokens[0][1:])
     else:
-        regex = fnmatch.translate(tokens[0][1:])
+        regex = fnmatch.translate(tokens[0])
         return NameFilter(regex)
-
-def compile_pattern(pattern):
-    func = None
-
-    if pattern.startswith("@"):
-        if "=" in pattern:
-            attr, glob = pattern[1:].split("=", 1)
-            attr = translate_field(attr)
-            regex = re_compile_glob(glob)
-            func = lambda entry:\
-                attr in entry.attributes \
-                and any(regex.match(value)
-                    for value in entry.attributes[attr])
-        elif "~" in pattern:
-            attr, regex = pattern[1:].split("~", 1)
-            attr = translate_field(attr)
-            regex = re.compile(regex, re.I | re.U)
-            func = lambda entry:\
-                attr in entry.attributes \
-                and any(regex.search(value)
-                    for value in entry.attributes[attr])
-        elif "*" in pattern:
-            regex = re_compile_glob(pattern[1:])
-            func = lambda entry:\
-                any(regex.match(attr) for attr in entry.attributes)
-        else:
-            attr = translate_field(pattern[1:])
-            func = lambda entry: attr in entry.attributes
-
-    return func
 
 class Filter(object):
     def __call__(self, entry):
@@ -248,17 +218,44 @@ class NameFilter(Filter):
     def __repr__(self):
         return "(NAME %s)" % self.input
 
-class PatternFilter(Filter):
+class AttrFilter(Filter):
+    def compile(self, pattern):
+        if "=" in pattern:
+            attr, glob = pattern.split("=", 1)
+            attr = translate_field(attr)
+            regex = re_compile_glob(glob)
+            func = lambda entry:\
+                attr in entry.attributes \
+                and any(regex.match(value)
+                    for value in entry.attributes[attr])
+        elif "~" in pattern:
+            attr, regex = pattern.split("~", 1)
+            attr = translate_field(attr)
+            regex = re.compile(regex, re.I | re.U)
+            func = lambda entry:\
+                attr in entry.attributes \
+                and any(regex.search(value)
+                    for value in entry.attributes[attr])
+        elif "*" in pattern:
+            regex = re_compile_glob(pattern)
+            func = lambda entry:\
+                any(regex.match(attr) for attr in entry.attributes)
+        else:
+            attr = translate_field(pattern)
+            func = lambda entry: attr in entry.attributes
+
+        return func
+
     def __init__(self, pattern):
         self.pattern = pattern
-        self.func = compile_pattern(self.pattern)
+        self.func = self.compile(self.pattern)
 
     def test(self, entry):
         if self.func:
             return self.func(entry)
 
     def __repr__(self):
-        return "(PATTERN %s)" % self.pattern
+        return "(ATTR %s)" % self.pattern
 
 class ConjunctionFilter(Filter):
     def __init__(self, *filters):
