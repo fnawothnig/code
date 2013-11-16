@@ -155,6 +155,10 @@ def compile_filter(pattern):
 			if len(tokens) > 2:
 				raise FilterSyntaxError("too many arguments for 'ATTR'")
 			return AttrFilter(tokens[1])
+		elif tokens[0] in {"ITEM", "item"}:
+			if len(tokens) > 2:
+				raise FilterSyntaxError("too many arguments for 'ITEM'")
+			return ItemNumberFilter(tokens[1])
 		elif tokens[0] in {"NAME", "name"}:
 			if len(tokens) > 2:
 				raise FilterSyntaxError("too many arguments for 'NAME'")
@@ -175,6 +179,8 @@ def compile_filter(pattern):
 		return compile_filter(tokens[0])
 	elif tokens[0] == "*":
 		return TautologyFilter()
+	elif tokens[0].startswith("#"):
+		return ItemNumberFilter(tokens[0][1:])
 	elif tokens[0].startswith("+"):
 		return TagFilter(tokens[0][1:])
 	elif tokens[0].startswith("@"):
@@ -217,6 +223,22 @@ class NameFilter(Filter):
 
 	def __repr__(self):
 		return "(NAME %s)" % self.input
+
+class ItemNumberFilter(Filter):
+	def __init__(self, pattern):
+		try:
+			self.input = int(pattern)
+		except ValueError:
+			self.input = None
+
+	def test(self, entry):
+		if self.input is None:
+			return False
+		else:
+			return entry.itemno == self.input
+
+	def __repr__(self):
+		return "(ITEM %d)" % self.input
 
 class AttrFilter(Filter):
 	def compile(self, pattern):
