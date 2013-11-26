@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 
-. lib.bash
+. lib.bash || exit
 
-if [ ! "$DESKTOP_SESSION" ] && [ "$DBUS_SESSION_BUS_ADDRESS" ]; then
-	if dbus-name -q org.gnome.SessionManager; then
-		DESKTOP_SESSION=gnome
+session=${DESKTOP_SESSION:-default}
+
+if [[ $session == default ]]; then
+	if [[ $GNOME_DESKTOP_SESSION_ID ]]; then
+		session=gnome
+	elif [[ $DBUS_SESSION_BUS_ADDRESS ]]; then
+		if dbus-name -q org.gnome.SessionManager; then
+			session=gnome
+		fi
 	fi
 fi
 
-case $DESKTOP_SESSION in
+case $session in
 enlightenment)
 	echo "Logging out of Enlightenment..."
 	enlightenment_remote -exit
@@ -18,7 +24,7 @@ gnome|gnome-*)
 	if have gnome-session-quit; then
 		gnome-session-quit --logout --force --no-prompt
 	elif have gnome-session-save; then
-		gnome-session-save --kill
+		gnome-session-save --force-logout --silent
 	fi
 	;;
 herbstluftwm)
@@ -50,5 +56,5 @@ xfce)
 	xfce4-session-logout --logout
 	;;
 *)
-	die "Unknown desktop environment!"
+	die "unknown desktop environment"
 esac

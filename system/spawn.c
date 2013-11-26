@@ -23,12 +23,19 @@
 
 char *arg0;
 
-static int usage() {
-	fprintf(stderr, "usage: %s [-L] [-l[name]] [-w] <command> [args]\n", arg0);
+static int usage(void) {
+	fprintf(stderr, "usage: %s [-cdLPw] [-l[name]] <command> [args]\n", arg0);
+	fprintf(stderr, "\n");
+	fprintf(stderr, "  -c        close all file descriptors\n");
+	fprintf(stderr, "  -d        change working directory to $HOME\n");
+	fprintf(stderr, "  -L        use a shared lock file instead of session\n");
+	fprintf(stderr, "  -l NAME   use given lock name instead of command name\n");
+	fprintf(stderr, "  -P        only print the lock file path\n");
+	fprintf(stderr, "  -w        fork the command and wait until it exits\n");
 	return 2;
 }
 
-char * get_ttyname() {
+char * get_ttyname(void) {
 	char *d, *i;
 	if ((d = getenv("DISPLAY"))) {
 		if ((i = strrchr(d, '.')))
@@ -143,6 +150,16 @@ int closefds(void) {
 	return 1;
 }
 
+void fixenv(void) {
+	unsetenv("COLORTERM");
+	unsetenv("GPG_TTY");
+	unsetenv("SHLVL");
+	unsetenv("TERM");
+	unsetenv("VTE_VERSION");
+	unsetenv("WINDOWID");
+	unsetenv("WINDOWPATH");
+}
+
 int main(int argc, char *argv[]) {
 	char **cmd = NULL;
 	int do_closefd = 0;
@@ -252,6 +269,7 @@ int main(int argc, char *argv[]) {
 	pid = fork();
 	switch (pid) {
 	case 0:
+		fixenv();
 		if (setsid() < 0) {
 			fprintf(stderr, "%s: detaching from session failed: %m\n",
 				arg0);

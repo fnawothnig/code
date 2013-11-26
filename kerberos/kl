@@ -180,6 +180,12 @@ sub display_ccache {
 
 do_print:
 
+	my $COLOR_TGT_LOCAL	= "32"; # same realm as client
+	my $COLOR_TGT_CROSS	= "35"; # immediate cross realm
+	my $COLOR_TGT_DISTANT	= "35"; # distant cross realm
+	my $COLOR_NO_TGT	= "34"; # tickets with no corresponding TGT
+	my $COLOR_REFERRAL	= "34"; # tickets with empty realm
+
 	say "" if $counter++;
 
 	say "Credentials for \e[1m${defprinc}\e[m";
@@ -188,9 +194,9 @@ do_print:
 
 	my @realms = uniq sort {$a eq '' ? 1 :
 				$b eq '' ? -1 :
-				$a cmp $b} ($defrealm, @extrealms);
+				$a cmp $b} (@extrealms);
 
-	for my $realm (@realms) {
+	for my $realm ($defrealm, @realms) {
 		$tgtcreds{$realm} //= [];
 		$creds{$realm} //= [];
 
@@ -203,23 +209,16 @@ do_print:
 		if (!@{$tgtcreds{$realm}}) {
 			my ($color, $label);
 			if ($realm eq '') {
-				$color = "1;34";
-				$label = "referral tickets";
+				$color = $COLOR_REFERRAL;
+				$label = "\e[1;${color}m(referral tickets)\e[m";
 			} else {
-				$color = "35";
-				$label = "tickets for '$realm' (no TGT)";
+				$color = $COLOR_NO_TGT;
+				$label = "\e[1;${color}m${realm}\e[m";
+				$label .= " \e[${color}m(no TGT found)\e[m";
 			}
 
-			say " "x4,
-				"\e[${color}m",
-				$label,
-				"\e[m",
-				;
+			say " "x4, $label;
 		}
-
-		my $COLOR_TGT_LOCAL	= "32";
-		my $COLOR_TGT_CROSS	= "35";
-		my $COLOR_TGT_DISTANT	= "35";
 
 		for my $tkt (@creds) {
 			my $color = "0";
@@ -240,8 +239,8 @@ do_print:
 						: $COLOR_TGT_CROSS)
 					: $COLOR_TGT_DISTANT;
 
-				$label .= "\e[1;${color}m${svname}\e[m";
-				$width += length $svname;
+				$label .= "\e[1;${color}m${nextrealm}\e[m";
+				$width += length $nextrealm;
 
 				if ($svrealm eq $nextrealm && $svrealm eq $defrealm) {
 					$label .= " \e[${color}m(local)\e[m";
@@ -301,7 +300,7 @@ do_print:
 
 		if (!$num_srv) {
 			say " "x4,
-				"  (no service tickets)",
+				"  \e[2m(no service tickets)\e[m",
 				;
 		}
 	}

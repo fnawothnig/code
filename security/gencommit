@@ -31,7 +31,7 @@ reads() { readc "$1" -e -i "${!2}" "$2"; }
 readp() {
 	if [[ "$DISPLAY" ]]; then
 		printf '%*s (starting pinentry)' $colwidth "$1"
-		local r=$(~/code/tools/askpin -p "$1" -t "${0##*/}" -W "$WINDOWID" \
+		local r=$(~/code/misc/askpin -p "$1" -t "${0##*/}" -W "$WINDOWID" \
 			-d "Generating a commitment for '$domain' at $date.")
 		declare -g "$2=$r"
 		printf '\n'
@@ -41,20 +41,24 @@ readp() {
 	fi
 }
 
+fhash_openssl() { openssl "$1" -r | awk '{print $1}'; }
+fhmac_openssl() { openssl "$1" -r -hmac "$2" | awk '{print $1}'; }
+
+fhash=([sha1]=fhash_openssl [sha256]=fhash_openssl)
+fhmac=([sha1]=fhmac_openssl [sha256]=fhmac_openssl)
+
+hash() { "${fhash[hash]}" "$hash" "$@"; }
+hmac() { "${fhmac[hmac]}" "$hmac" "$@"; }
+
 domain=$1
 date=$2
 hash=$3
 hash=$(fmthashfunc "${hash:-sha1}")
 
-case $hash in
-    sha1)
-	hash() { sha1sum | awk '{print $1}'; };;
-    sha256)
-	hash() { sha256sum | awk '{print $1}'; };;
-    *)
+if [[ ! "${fhash[hash]}" ]]; then
 	echo "Unsupported hash '$hash'" >&2
 	exit 1
-esac
+fi
 
 if [[ "$domain" ]]; then
 	echoc "domain:" "$domain"
@@ -78,17 +82,35 @@ if ! [[ "$date" ]]; then
 	stop "Invalid date."
 fi
 
+if (( $(date +%s -d "$date") < $(date +%s -d "2013-11-15") )); then
+	unset hmac
+else
+	hmac=sha1
+fi
+
 readp "passphrase?" passphrase
 
 if ! [[ "$passphrase" ]]; then
 	stop "Passphrase is empty."
 fi
 
-secret=$(fmtseed "$domain" "$date" "$passphrase" | hash)
+# generate the site secret that might be revealed to admins
+
+if [[ "$hmac" ]]; then
+	secret=$(fmtseed "$domain" "$date" | hmac "$passphrase")
+else
+	secret=$(fmtseed "$domain" "$date" "$passphrase" | hash)
+fi
+
+# hash the secret to generate the public value
 
 public=$(printf '%s' "$secret" | hash)
 
+# print out
+
 echoc "hash input:" "$(fmtseed "$domain" "$date" "...")"
+
+echoc "hash algo:" "$hash, ${hmac:-none}"
 
 echoc "secret:" "$(printf '\e[31m%s\e[m' "$secret")"
 

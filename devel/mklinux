@@ -1,5 +1,12 @@
-#!/bin/sh -e
+#!/usr/bin/env bash
 # mklinux – script to compile and install a Linux kernel for my laptop
+
+set -e
+
+. lib.bash || exit
+
+progname='mklinux'
+progname_prefix=0
 
 log() { printf '\e[1;36m*\e[m \e[36m%s\e[m\n' "$*";
 	case $TERM in xterm*)
@@ -98,8 +105,12 @@ for mod in ${emods[@]}; do
 	sudo rm -rf "/var/lib/dkms/$mod/$release"
 	sudo rm -rf "/var/lib/dkms/$mname/kernel-$release-$(uname -m)"
 	echo -n "install..."
-	sudo dkms install "$mod" -k "$release" -q
-	echo "done."
+	if sudo dkms install "$mod" -k "$release" -q; then
+		echo "done."
+	else
+		echo "failed."
+		warn "build failed for $mod"
+	fi
 done
 
 log "clean old kernels"

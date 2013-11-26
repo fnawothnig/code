@@ -25,12 +25,15 @@ FQDN=$(fqdn || hostname)
 . libfilterfile.bash	|| exit
 . libhttpfetch.bash	|| exit
 
+progname_prefix=0
+
 usage() {
-	echo "Usage: $progname [-Frv]"
+	echo "Usage: $progname [-FKrv]"
 	echo ""
-	echo "  -F  test key filter"
-	echo "  -r  receive signing key"
-	echo "  -v  verbose"
+	echo "  -F        test key filter"
+	echo "  -k URI    use another keyserver"
+	echo "  -r        receive signing key"
+	echo "  -v        verbose"
 	echo ""
 	echo -e "\e[1mWARNING: This script will replace your keys with grawity's!\e[m"
 	exit 2
@@ -52,7 +55,7 @@ fetch() {
 	local url=$1 out=$2
 	local max_tries=3 retry_wait=3 attempt=1
 	while true; do
-		say "fetching $url (#$attempt)"
+		debug "fetching $url (#$attempt)"
 		if http_fetch "$url" "$out"; then
 			return 0
 		elif (( $? == 99 )); then
@@ -69,14 +72,25 @@ fetch() {
 }
 
 verify() {
-	local input=$1 output=$2 status=
+	local input=$1 output=$2 status= errors=0
 	debug "verifying '$input' to '$output'"
 	if status=$($GPG --batch --yes --status-fd 1 --output "$output" \
-	                 --decrypt "$input" 2> /dev/null) \
-	&& grep -qs "^\[GNUPG:\] VALIDSIG $KEYFP " <<< "$status" \
-	&& grep -qs "^\[GNUPG:\] TRUST_ULTIMATE\$" <<< "$status"; then
-		say "$status"
+	                 --decrypt "$input" 2> /dev/null); then
+		if ! grep -qs "^\[GNUPG:\] VALIDSIG $KEYFP " <<< "$status"; then
+			err "file has invalid signature"
+		fi
+		if ! grep -qs "^\[GNUPG:\] TRUST_ULTIMATE\$" <<< "$status"; then
+			err "signer's key is not ultimately trusted"
+		fi
+		if (( errors )); then
+			echo "$status" >&2
+			return 1
+		else
+			say "$status"
+			return 0
+		fi
 	else
+		err "unknown GnuPG error occured"
 		echo "$status" >&2
 		return 1
 	fi
@@ -90,9 +104,10 @@ filter=false
 import=false
 file="$HOME/.ssh/authorized_keys"
 
-while getopts "Frv" OPT "$@"; do
+while getopts "Fkrv" OPT "$@"; do
 	case "$OPT" in
 	'F')	filter=true;;
+	'k')	KEYSERVER=$OPTARG;;
 	'r')	import=true;;
 	'v')	VERBOSE=true;;
 	'?')	usage;;
@@ -119,16 +134,19 @@ fi
 # ensure key exists in keyring
 
 if $import; then
-	if confirm "import key $KEYFP?"; then
-		VERBOSE=true recv_key "$KEYFP" &&
-		echo "$KEYFP:6:" | $GPG --import-ownertrust
-	else
-		exit
-	fi
+	VERBOSE=true recv_key "$KEYFP" && {
+		log "imported owner's key into keyring"
+		if confirm "mark this key as ultimately trusted?"; then
+			(echo "$KEYFP:6:" | $GPG --import-ownertrust) &&
+			log "key's ownertrust updated"
+		else
+			err "only ultimately trusted keys are accepted"
+		fi
+	} || exit
 elif $GPG --list-keys "$KEYFP" > /dev/null; then
 	recv_key "$KEYFP"
 else
-	die "key $KEYFP not in keyring"
+	die "key $KEYFP not found in keyring"
 fi
 
 # download new pubkeys
@@ -163,3 +181,8 @@ fi
 } | filter_keys > "$file"
 
 rm -f "$tmp_plain" "$tmp_signed"
+
+if [[ -t 1 ]]; then
+	num=$(grep -c '^[^#]' "$file")
+	log "imported $num authorized keys"
+fi
